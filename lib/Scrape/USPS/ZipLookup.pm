@@ -11,7 +11,7 @@
 # DOCUMENTATION OF THIS PROGRAM, WHICH MAY BE FOUND AT THE END OF THIS
 # SOURCE CODE FILE.
 #
-# Copyright (C) 1999-2004 Gregor N. Purdy. All rights reserved.
+# Copyright (C) 1999-2005 Gregor N. Purdy. All rights reserved.
 # This program is free software. It is subject to the same license as Perl.
 # [ $Revision: 1.8 $ ]
 #
@@ -21,14 +21,14 @@ package Scrape::USPS::ZipLookup;
 use strict;
 use warnings;
 
-our $VERSION = '2.3';
+our $VERSION = '2.4';
 
 use WWW::Mechanize;         # To communicate with USPS and get HTML
 
 use Scrape::USPS::ZipLookup::Address;
 
 my $start_url = 'http://zip4.usps.com/zip4/welcome.jsp';
-my $form_id   = 'frmzip';
+my $form_name = 'form1';
 
 
 #
@@ -126,25 +126,32 @@ sub std_inner
     print $response->as_string;
   }
 
-  $agent->form($form_id);
+  $agent->form_name($form_name);
 
-  $agent->field(Selection => 1);
+  $agent->field(address1   => uc $addr->delivery_address);
 
-  { # TODO: Stupid hack because HTML::Form does a Carp::carp when we set this!
+  $agent->field(city       => uc $addr->city);
+  $agent->field(state      => uc $addr->state);
+  $agent->field(zip5	   => uc $addr->zip_code);
+
+  {
+    #
+    # Stupid hack because HTML::Form does a Carp::carp when we set these read-only
+    # fields! (And, setting $agent->quiet(0) doesn't help, nor does using onwarn =>
+    # undef in the constructor for the user agent object!
+    #
+
     no strict;
     no warnings;
     open SAVE_STDERR, ">&STDERR";
     close STDERR;
-    $agent->field(address   => uc $addr->delivery_address);
-    $agent->field(address1  => uc $addr->delivery_address);
+    $agent->field(visited    => 1);
+    $agent->field(pagenumber => 0);
+    $agent->field(firmname   => '');
     open STDERR, ">&SAVE_STDERR";
   }
 
-  $agent->field(city      => uc $addr->city);
-  $agent->field(state     => uc $addr->state);
-  $agent->field(zipcode   => uc $addr->zip_code);
-
-  $response = $agent->click; # An HTTP::Response instance
+  $response = $agent->click('submit'); # An HTTP::Response instance
 
 #
 # NOTE 2003-12-12: Can't do anymore. req() method is gone in 0.7 WWW::Mechanize!
@@ -192,7 +199,8 @@ sub std_inner
 
   my @matches;
 
-  my @raw_matches = map { trim($_) } $content =~ m{<td\s+[^>]*background=['"]images/light_blue_bg2.gif['"][^>]*class="mainText"[^>]*>(.*?)</td>}gsi;
+  $content =~ s/(\cI|\cJ|\cM)//g;
+  my @raw_matches = map { trim($_) } $content =~ m{<td headers="full" height="34" valign="top" class="main" style="background:url\(images/table_gray\.gif\); padding:5px 10px;">(.*?)<br \/><\/td> }gsi;
 
   foreach my $raw_match (@raw_matches) {
     my $carrier_route  = undef;
@@ -398,7 +406,7 @@ Gregor N. Purdy, C<gregor@focusresearch.com>.
 
 =head1 COPYRIGHT
 
-Copyright (C) 1999-2004 Gregor N. Purdy. All rights reserved.
+Copyright (C) 1999-2005 Gregor N. Purdy. All rights reserved.
 
 This program is free software. It is subject to the same license as Perl.
 

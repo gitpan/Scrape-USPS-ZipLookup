@@ -1,7 +1,7 @@
 #
 # Makefile.PL
 #
-# Copyright (C) 1999-2004 Gregor N. Purdy. All rights reserved.
+# Copyright (C) 1999-2005 Gregor N. Purdy. All rights reserved.
 # This program is free software. It is subject to the same license as Perl.
 #
 # [ $Revision: 1.4 $ ]
@@ -13,7 +13,7 @@ WriteMakefile (
   NAME         => 'Scrape::USPS::ZipLookup',
   VERSION_FROM => 'lib/Scrape/USPS/ZipLookup.pm',
   PREREQ_PM    => {
-    WWW::Mechanize         => 0.70, # To communicate with USPS and get HTML
+    WWW::Mechanize         => 1.14, # To communicate with USPS and get HTML
   },
   EXE_FILES    => [
     'script/stdaddr'

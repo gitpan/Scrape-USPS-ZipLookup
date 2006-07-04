@@ -11,9 +11,10 @@
 # DOCUMENTATION OF THIS PROGRAM, WHICH MAY BE FOUND AT THE END OF THIS
 # SOURCE CODE FILE.
 #
-# Copyright (C) 1999-2005 Gregor N. Purdy. All rights reserved.
+# Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
 # This program is free software. It is subject to the same license as Perl.
-# [ $Revision: 1.8 $ ]
+#
+# [ $Id: ZipLookup.pm 2214 2006-07-04 20:48:37Z gregor $ ]
 #
 
 package Scrape::USPS::ZipLookup;
@@ -21,7 +22,7 @@ package Scrape::USPS::ZipLookup;
 use strict;
 use warnings;
 
-our $VERSION = '2.4';
+our $VERSION = '2.5';
 
 use WWW::Mechanize;         # To communicate with USPS and get HTML
 
@@ -120,11 +121,11 @@ sub std_inner
 
   my $content = $agent->{content};
 
-  if ($self->verbose) {
-    print "-" x 79, "\n";
-    print "Initial Page HTTP Response:\n";
-    print $response->as_string;
-  }
+#  if ($self->verbose) {
+#    print "-" x 79, "\n";
+#    print "Initial Page HTTP Response:\n";
+#    print $response->as_string;
+#  }
 
   $agent->form_name($form_name);
 
@@ -146,7 +147,7 @@ sub std_inner
     open SAVE_STDERR, ">&STDERR";
     close STDERR;
     $agent->field(visited    => 1);
-    $agent->field(pagenumber => 0);
+    $agent->field(pagenumber => 'all');
     $agent->field(firmname   => '');
     open STDERR, ">&SAVE_STDERR";
   }
@@ -166,11 +167,11 @@ sub std_inner
 
   $content = $agent->{content};
 
-  if ($self->verbose) {
-    print "-" x 79, "\n";
-    print "HTTP Response:\n";
-    print $response->as_string;
-  }
+#  if ($self->verbose) {
+#    print "-" x 79, "\n";
+#    print "HTTP Response:\n";
+#    print $response->as_string;
+#  }
 
   #
   # Time to Parse:
@@ -200,54 +201,142 @@ sub std_inner
   my @matches;
 
   $content =~ s/(\cI|\cJ|\cM)//g;
-  my @raw_matches = map { trim($_) } $content =~ m{<td headers="full" height="34" valign="top" class="main" style="background:url\(images/table_gray\.gif\); padding:5px 10px;">(.*?)<br \/><\/td> }gsi;
+  my @raw_matches = map { trim($_) } $content =~ m{<td headers="\w+" height="34" valign="top" class="main" style="background:url\(images/table_gray\.gif\); padding:5px 10px;">(.*?)>Mailing Industry Information</a>}gsi;
 
   foreach my $raw_match (@raw_matches) {
-    my $carrier_route  = undef;
-    my $county         = undef;
-    my $delivery_point = undef;
-    my $check_digit    = undef;
-
-#    if ($cell =~ m/mail_info_pop2.jsp\?carrier=(\w*)&county=(\w*)&dpoint=(\w*)&cdigit=(\w*)&lac=&elot=0176&elotind=A&rectype=S&pmbdes=&pmbnum=&dflag=&ews="
-
-    if ($raw_match =~ m/mail_info_pop2.jsp\?carrier=(\w*)&county=(\w*)&dpoint=(\w*)&cdigit=(\w*)/i) {
-      $carrier_route  = $1;
-      $county         = $2;
-      $delivery_point = $3;
-      $check_digit    = $4;
+    if ($self->verbose) {
+      print "-" x 79, "\n";
+      print "Raw match:\n";
+      print "$raw_match\n";
     }
 
+    my $carrier_route   = undef;
+    my $county          = undef;
+    my $delivery_point  = undef;
+    my $check_digit     = undef;
+    my $lac_indicator   = undef;
+    my $elot_sequence   = undef;
+    my $elot_indicator  = undef;
+    my $record_type     = undef;
+    my $pmb_designator  = undef;
+    my $pmb_number      = undef;
+    my $default_address = undef;
+    my $early_warning   = undef;
+    my $valid           = undef;
+
+    if ($raw_match =~ m/mailingIndustryPopup2?[(](.*?)[)];/im) {
+      my $args = $1;
+
+      # Reformat to pipe-delimited
+      $args =~ s/^'//;
+      $args =~ s/\s*'?\s*,\s*'?\s*/\|/g;
+      $args =~ s/'$//;
+
+      my @args = split(/\|/, $args);
+
+      $carrier_route   = (defined $args[0]  && $args[0]  ne '') ? $args[0]  : undef;
+      $county          = (defined $args[1]  && $args[1]  ne '') ? $args[1]  : undef;
+      $delivery_point  = (defined $args[2]  && $args[2]  ne '') ? $args[2]  : undef;
+      $check_digit     = (defined $args[3]  && $args[3]  ne '') ? $args[3]  : undef;
+      $lac_indicator   = (defined $args[4]  && $args[4]  ne '') ? $args[4]  : undef;
+      $elot_sequence   = (defined $args[5]  && $args[5]  ne '') ? $args[5]  : undef;
+      $elot_indicator  = (defined $args[6]  && $args[6]  ne '') ? $args[6]  : undef;
+      $record_type     = (defined $args[7]  && $args[7]  ne '') ? $args[7]  : undef;
+      $pmb_designator  = (defined $args[8]  && $args[8]  ne '') ? $args[8]  : undef;
+      $pmb_number      = (defined $args[9]  && $args[9]  ne '') ? $args[9]  : undef;
+      $default_address = (defined $args[10] && $args[10] ne '') ? $args[10] : undef;
+      $early_warning   = (defined $args[11] && $args[11] ne '') ? $args[11] : undef;
+      $valid           = (defined $args[12] && $args[12] ne '') ? $args[12] : undef;
+    }
+    else {
+      if ($self->verbose) {
+        print "WARNING: Could not find Mailing Industry info!\n";
+      }
+    }
+
+    $raw_match =~ s{</td>\s*<td.*?>}{ }g;
     $raw_match =~ s{</?font.*?>}{}g;
     $raw_match =~ s{</?span.*?>}{}g;
     $raw_match =~ s{</?a.*?>}{}g;
     $raw_match =~ s{&nbsp;}{ }g;
     $raw_match =~ s{^.*?:\s*}{}g;
+    $raw_match =~ s{\s+}{ }g;
     $raw_match =~ s{<!--<(.*?)/>-->}{}g;
+    $raw_match =~ s{<a.*$}{};
+    $raw_match =~ s{<br\s*/?>\s*$}{};
 
-    my ($address, $city_state_zip) = split( /\s*<br\s*\/?>\s*/, $raw_match);
+    if ($self->verbose) {
+      print "-" x 79, "\n";
+      print "Distilled match:\n";
+      print "$raw_match\n";
+    }
+
+    my @parts = split( /\s*<br\s*\/?>\s*/, $raw_match);
+
+    my $firm = undef;
+    my $address = undef;
+    my $city_state_zip = undef;
+
+    if (@parts == 2) {
+      ($address, $city_state_zip) = @parts;
+    }
+    elsif (@parts == 3) {
+      ($firm, $address, $city_state_zip) = @parts;
+    }
+    else {
+      die "Parts = " . scalar(@parts) . "!";
+    }
 
     next unless $city_state_zip;
     next unless ($city_state_zip =~ m/^(.*)\s+(\w\w)\s+(\d{5}(-\d{4})?)/);
 
     my ($city, $state, $zip) = ($1, $2, $3);
 
-#    print("-" x 70, "\n");
-#    print "Address:        $address\n";
-#    print "City:           $city\n";
-#    print "State:          $state\n";
-#    print "Zip:            $zip\n";
-#    print "Carrier Route:  $carrier_route\n";
-#    print "County:         $county\n";
-#    print "Delivery Point: $delivery_point\n";
-#    print "Check Digit:    $check_digit\n";
-#    print "\n";
+    if ($self->verbose) {
+      print("-" x 70, "\n");
+
+      print "Firm:            $firm\n"            if defined $firm;;
+
+      print "Address:         $address\n";
+      print "City:            $city\n";
+      print "State:           $state\n";
+      print "Zip:             $zip\n";
+
+      print "Carrier Route:   $carrier_route\n"   if defined $carrier_route;
+      print "County:          $county\n"          if defined $county;
+      print "Delivery Point:  $delivery_point\n"  if defined $delivery_point;
+      print "Check Digit:     $check_digit\n"     if defined $check_digit;
+      print "LAC Indicator:   $lac_indicator\n"   if defined $lac_indicator;
+      print "eLOT Sequence:   $elot_sequence\n"   if defined $elot_sequence;
+      print "eLOT Indicator:  $elot_indicator\n"  if defined $elot_indicator;
+      print "Record Type:     $record_type\n"     if defined $record_type;
+      print "PMB Designator:  $pmb_designator\n"  if defined $pmb_designator;
+      print "PMB Number:      $pmb_number\n"      if defined $pmb_number;
+      print "Default Address: $default_address\n" if defined $default_address;
+      print "Early Warning:   $early_warning\n"   if defined $early_warning;
+      print "Valid:           $valid\n"           if defined $valid;
+
+      print "\n";
+    }
 
     my $match = Scrape::USPS::ZipLookup::Address->new($address, $city, $state, $zip);
+
+    $match->firm($firm);
 
     $match->carrier_route($carrier_route);
     $match->county($county);
     $match->delivery_point($delivery_point);
     $match->check_digit($check_digit);
+
+    $match->lac_indicator($lac_indicator);
+    $match->elot_sequence($elot_sequence);
+    $match->elot_indicator($elot_indicator);
+    $match->record_type($record_type);
+    $match->pmb_designator($pmb_designator);
+    $match->pmb_number($pmb_number);
+    $match->default_address($default_address);
+    $match->early_warning($early_warning);
+    $match->valid($valid);
 
     push @matches, $match;
   }
@@ -386,17 +475,58 @@ will be returned. Otherwise, a four-element array will be returned.
 To see debugging output, call C<< $zlu->verbose(1) >>.
 
 
+=head1 FIELDS
+
+This page at the U.S. Postal Service web site contains definitions of some
+of the fields: C<http://zip4.usps.com/zip4/pu_mailing_industry_def.htm>
+
+
 =head1 TERMS OF USE
 
-BE SURE TO READ AND FOLLOW THE UNITED STATES POSTAL SERVICE TERMS OF USE
-PAGE (AT C<http://www.usps.com/homearea/docs/termsofuse.htm> AT THE TIME
-THIS TEXT WAS WRITTEN). IN PARTICULAR, NOTE THAT THEY
-DO NOT PERMIT THE USE OF THEIR WEB SITE'S FUNCTIONALITY FOR COMMERCIAL
-PURPOSES. DO NOT USE THIS CODE IN A WAY THAT VIOLATES THE TERMS OF USE.
+BE SURE TO READ AND FOLLOW THE UNITED STATES POSTAL SERVICE TERMS OF USE PAGE
+(AT C<http://www.usps.com/homearea/docs/termsofuse.htm> AT THE TIME THIS TEXT
+WAS WRITTEN). IN PARTICULAR, NOTE THAT THEY DO NOT PERMIT THE USE OF THEIR WEB
+SITE'S FUNCTIONALITY FOR COMMERCIAL PURPOSES. DO NOT USE THIS CODE IN A WAY
+THAT VIOLATES THE TERMS OF USE.
+
+As the user of this code, you are responsible for complying with the most
+recent version of the Terms of Use, whether at the URL provided above or
+elsewhere if the U.S. Postal Service moves it or updates it. As a convenience,
+here is a copy of the most relevant paragraph of the Terms of Use as of
+2006-07-04:
+
+  Material on this site is the copyrighted property of the United States
+  Postal Service¨ (Postal Serviceª). All rights reserved. The information
+  and images presented here may not under any circumstances be reproduced
+  or used without prior written permission. Users may view and download
+  material from this site only for the following purposes: (a) for personal,
+  non-commercial home use; (b) where the materials clearly state that these
+  materials may be copied and reproduced according to the terms stated in
+  those particular pages; or (c) with the express written permission of the
+  Postal Service. In all other cases, you will need written permission from
+  the Postal Service to reproduce, republish, upload, post, transmit,
+  distribute or publicly display material from this Web site. Users agree not
+  to use the site for sale, trade or other commercial purposes. Users may not
+  use language that is threatening, abusive, vulgar, discourteous or criminal.
+  Users also may not post or transmit information or materials that would
+  violate rights of any third party or which contains a virus or other harmful
+  component. The Postal Service reserves the right to remove or edit any
+  messages or material submitted by users. 
 
 The author believes that the example usage given above does not violate
 these terms, but sole responsibility for conforming to the terms of use
 belongs to the user of this code, not the author.
+
+
+=head1 BUG REPORTS
+
+When contacting the author with bug reports, please provide a test address that
+exhibits the problem, and make sure it is OK to add that address to the test
+suite.
+
+Be sure to let me know if you don't want me to mention your name or email
+address when I document the changes and contributions to the release. Typically
+I put this information in the CHANGES file.
 
 
 =head1 AUTHOR
@@ -406,7 +536,7 @@ Gregor N. Purdy, C<gregor@focusresearch.com>.
 
 =head1 COPYRIGHT
 
-Copyright (C) 1999-2005 Gregor N. Purdy. All rights reserved.
+Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
 
 This program is free software. It is subject to the same license as Perl.
 
@@ -416,4 +546,3 @@ This program is free software. It is subject to the same license as Perl.
 #
 # End of file.
 #
-

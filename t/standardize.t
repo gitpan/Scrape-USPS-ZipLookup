@@ -2,10 +2,10 @@
 #
 # standardize.t - Test script.
 #
-#
-# Copyright (C) 1999-2005 Gregor N. Purdy. All rights reserved.
+# Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
 # This program is free software. It is subject to the same license as Perl.
-# [ $Revision: 1.5 $ ]
+#
+# [ $Id: standardize.t 2209 2006-07-04 19:55:33Z gregor $ ]
 #
 
 use strict;
@@ -81,6 +81,13 @@ while (@tries) {
       print 'not ';
       $failed++;
     }
+  }
+  elsif ($out[0] eq '<multiple>') {
+    if (@result < 2) {
+      $message = "Expected multiple matches, but got " . scalar(@result);
+      print 'not ';
+      $failed++;
+    }
   } else {
     if (@result) {
       my $expected = join("\n", @out);
@@ -107,7 +114,6 @@ while (@tries) {
     printf "ok %d\n", $i;
   }
 }
-
 
 exit $failed;
 
@@ -159,5 +165,14 @@ IA
 DES MOINES
 IA
 50310-5840
+
+###############################################################################
+
+1670 Broadway
+Denver
+CO
+80202
+
+<multiple>
 
 ###############################################################################

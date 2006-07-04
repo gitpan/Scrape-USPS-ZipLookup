@@ -1,19 +1,19 @@
 #
 # Address.pm
 #
-# Perl 5 module to standardize U.S. postal addresses by referencing the U.S.
-# Postal Service's web site:
+# Perl 5 module to represent U.S. postal addresses for the purpose of
+# standardizing via the U.S. Postal Service's web site:
 #
 #     http://www.usps.com/zip4/
 #
 # BE SURE TO READ AND UNDERSTAND THE TERMS OF USE SECTION IN THE
 # DOCUMENTATION, WHICH MAY BE FOUND AT THE END OF THIS SOURCE CODE.
 #
-# Copyright (C) 1999-2005 Gregor N. Purdy. All rights reserved.
+# Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
 #
 # This program is free software. It is subject to the same license as Perl.
 #
-# [ $Revision: 1.4 $ ]
+# [ $Id: Address.pm 2211 2006-07-04 20:19:19Z gregor $ ]
 #
 
 package Scrape::USPS::ZipLookup::Address;
@@ -42,7 +42,16 @@ my @output_fields = (
   'Carrier Route',
   'County',
   'Delivery Point',
-  'Check Digit'
+  'Check Digit',
+  'LAC Indicator',
+  'eLOT Sequence',
+  'eLOT Indicator',
+  'Record Type',
+  'PMB Designator',
+  'PMB Number',
+  'Default Address',
+  'Early Warning',
+  'Valid',
 );
 my %output_fields = map { ($_, 1) } @output_fields;
 
@@ -61,7 +70,7 @@ my %all_fields = map { ($_, 1) } @all_fields;
 sub new
 {
   my $class  = shift;
-  my %fields = map { ($_, '') } @all_fields;
+  my %fields = map { ($_, undef) } @all_fields;
   my $self   = bless { %fields }, $class;
 
   return $_[0] if @_ and ref($_[0]) eq $class;
@@ -84,31 +93,18 @@ sub new
 sub dump
 {
   my $self = shift;
+  my $message = shift;
 
-  confess "Expected message" unless @_;
+  confess "Expected message" unless $message;
 
-  print "ADDRESS: ", shift, "\n";
+  print "ADDRESS: $message\n";
+
   foreach my $key (sort @all_fields) {
+    next unless defined $self->{$key};
     printf "  %s => '%s'\n", $key, $self->{$key};
   }
+
   print "\n";
-}
-
-
-#
-# new_html()
-#
-
-sub new_html
-{
-  my $class = shift;
-  my $html  = shift;
-
-  my $self = $class->new();
-
-  $self->html($html);
-
-  return $self;
 }
 
 
@@ -158,13 +154,22 @@ sub county           { my $self = shift; $self->_field('County',           @_); 
 sub delivery_point   { my $self = shift; $self->_field('Delivery Point',   @_); }
 sub check_digit      { my $self = shift; $self->_field('Check Digit',      @_); }
 
+sub lac_indicator    { my $self = shift; $self->_field('LAC Indicator',    @_); }
+sub elot_sequence    { my $self = shift; $self->_field('eLOT Sequence',    @_); }
+sub elot_indicator   { my $self = shift; $self->_field('eLOT Indicator',   @_); }
+sub record_type      { my $self = shift; $self->_field('Record Type',      @_); }
+sub pmb_designator   { my $self = shift; $self->_field('PMB Designator',   @_); }
+sub pmb_number       { my $self = shift; $self->_field('PMB Number',       @_); }
+sub default_address  { my $self = shift; $self->_field('Default Address',  @_); }
+sub early_warning    { my $self = shift; $self->_field('Early Warning',    @_); }
+sub valid            { my $self = shift; $self->_field('Valid',            @_); }
+
 
 #
 # input_fields()
 #
 # Set or get all input fields simultaneously. When setting, any unspecified
-# fields are set to the empty string and all output fields are set to the
-# empty string as well.
+# fields are set to undef and all output fields are set to the undef as well.
 #
 
 sub input_fields
@@ -177,7 +182,7 @@ sub input_fields
     return %fields;
   }
 
-  my %fields = map { ($_, '') } @input_fields;
+  my %fields = map { ($_, undef) } @input_fields;
   my %input;
 
   if (@_ == 1 and ref $_[0] and UNIVERSAL::isa($_[0], "Scrape::USPS::ZipLookup::Address")) {
@@ -223,159 +228,12 @@ sub input_fields
     confess "Unrecognized input (" . scalar(@_) . " args: " . join(', ', map { ref } @_) . ")!";
   }
 
-  foreach (@all_fields) { $self->{$_} = ''; }
+  foreach (@all_fields) { $self->{$_} = undef; }
 
   foreach my $key (keys %input) {
     die "Illegal field '$key'!" unless $input_fields{$key};
     $self->{$key} = $input{$key};
   }
-}
-
-
-#
-# query()
-#
-# Set or get the query string that forms the content of the HTTP request
-# for scraping. This ends up calling the input_fields() function to set
-# or get the input fields.
-#
-
-sub query
-{
-  my $self = shift;
-
-  my $uri = URI->new('http:');
-
-  if (@_) {
-    $uri->query(shift);
-    my %hash = $uri->query_form();
-    $self->input_fields(%hash);
-    return;
-  } else {
-    my @query = (
-      Selection    => 1,
-      company_name => $self->firm,
-      urbanization => $self->urbanization,
-      address      => $self->delivery_address . ' ', # TODO: Extra space necessary?
-      address1     => $self->delivery_address,
-      address2     => '',                      # TODO: This is new stuff
-      city         => $self->city,
-      state        => $self->state,
-      zipcode      => $self->zip_code,
-      'Submit.x'   => 17, # TODO: What is this???
-      'Submit.y'   => 13, # TODO: What is this???
-    );
-
-    $uri->query_form(@query);
-    return $uri->query;
-  }
-}
-
-
-#
-# html()
-#
-# Set via HTML fragment obtained from HTTP::Response.
-#
-
-sub html
-{
-  my $self = shift;
-
-  my ($addr) = @_;
-  my $table;
-  my $trash;
-  my %data;
-
-  #
-  # First, split it into the address proper, and the table of additional
-  # information:
-  #
-
-  unless ($addr =~ s/^(.*)<TABLE(\s+[^>]*)?>(.*)<\/TABLE>(.*)$//sim) {
-    die "Bad address: Can't find <TABLE> begin tag!: \n\n>>>>>\n$addr\n<<<<<\n\n";
-  }
-
-  $addr  = $1;
-  $table = $3;
-  $trash = $4;
-
-  #
-  # Now, scrape information from the table:
-  #
-
-  $table =~ s/<\/?[a-z]+>//ig; # Remove all begin and end tags
-  $table =~ s/^\s*//mg;        # Remove leading whitespace.
-  $table =~ s/\s*$//mg;        # Remove trailing whitespace.
-  $table =~ s/\n+/\n/mg;       # Delete any extra newlines
-
-  print STDERR "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv\n" if $VERBOSE;
-  print STDERR ">> TABLE:\n$table\n" if $VERBOSE;
-  print STDERR "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n" if $VERBOSE;
-
-  foreach (split(/\n/m, $table)) {
-    m/^([a-z ]*)\s+:\s+(.*)$/i or die "Bad table field: \"$_\"!\n";
-    $self->_field($1, $2);
-  }
-
-  #
-  # Now, perform some simple transformations on the address to get it into shape:
-  #
-
-  $addr =~ s/<\/?[a-z]+>//ig;  # Remove all begin and end tags
-  $addr =~ s/^\s*//mg;         # Remove leading whitespace.
-  $addr =~ s/\s*$//mg;         # Remove trailing whitespace.
-  $addr =~ s/ +/ /g;           # Collapse spaces.
-
-  print STDERR "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv\n" if $VERBOSE;
-  print STDERR ">> ADDRESS:\n$addr\n" if $VERBOSE;
-  print STDERR "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n" if $VERBOSE;
-
-  my @addr = split(/\n/m, $addr);
-
-  my $city_state_zip = pop @addr;
-
-  $city_state_zip =~ m/^(.*) ([A-Z][A-Z]) (\d{5}(-\d{4})?)$/
-    or die "Unrecognized city-state-zip format '$city_state_zip'!";
-
-  my ($city, $state, $zip_code) = ($1, $2, $3);
-
-  my $delivery_address = pop @addr;
-
-  if (@addr and $addr[-1] =~ m/^\((EVEN|ODD) Range [0-9]+ - [0-9]+\)$/) {
-    $delivery_address  = pop(@addr) . " " . $delivery_address;
-  }
-  
-  my $firm = pop @addr if @addr;
-
-  die "Unrecognized address format: '$addr'!" if @addr;
-
-#  $addr =~ s/\n/|/mg;          # Put it all on one line with '|' between fields
-
-  #
-  # Add field delimiters for the state and zip code:
-  #
-
-#  $addr =~ s/ ([A-Z]{2}) (\d{5}(-\d{4})?).*$/|$1|$2/i;
-
-  #
-  # Split it into an array and set fields based on it:
-  #
-  # We do explicit assignment in case there were any extra elements
-  # produced by split.
-  #
-  # TODO: This is not robust enough to deal with urbanizations, I would guess.
-  #
-
-#  my ($delivery_address, $city, $state, $zip_code) = split('\|', $addr);
-
-  $self->firm            ($firm)             if defined $firm;
-  $self->delivery_address($delivery_address);
-  $self->city            ($city);
-  $self->state           ($state);
-  $self->zip_code        ($zip_code);
-
-  return;
 }
 
 
@@ -441,141 +299,94 @@ __END__
 
 =head1 NAME
 
-Scrape::USPS::ZipLookup::Address - Address Class for USPS ZIP Code Lookups
-
+Scrape::USPS::ZipLookup::Address - U.S. postal addresses.
 
 =head1 SYNOPSIS
 
+  use Scrape::USPS::ZipLookup;
   use Scrape::USPS::ZipLookup::Address;
 
+  my $addr = Scrape::USPS::ZipLookup::Address->new({
+    'Delivery Address' => $address,
+    'City'             => $city,
+    'State'            => $state,
+    'Zip Code'         => $zip
+  };
 
-=head1 DESCRIPTION
+  my $zlu = Scrape::USPS::ZipLookup->new();
 
-TODO
+  my @matches = $zlu->std_addr($addr);
 
-
-=head1 TERMS OF USE
-
-BE SURE TO READ AND FOLLOW THE UNITED STATES POSTAL SERVICE TERMS OF USE
-PAGE AT C<http://www.usps.gov/disclaimer.html>. IN PARTICULAR, NOTE THAT THEY
-DO NOT PERMIT THE USE OF THEIR WEB SITE'S FUNCTIONALITY FOR COMMERCIAL
-PURPOSES. DO NOT USE THIS CODE IN A WAY THAT VIOLATES THE TERMS OF USE.
-
-The author believes that the example usage given above does not violate
-these terms, but sole responsibility for conforming to the terms of use
-belongs to the user of this code, not the author.
-
-
-=head1 AUTHOR
-
-Gregor N. Purdy, C<gregor@focusresearch.com>.
-
-
-=head1 COPYRIGHT
-
-Copyright (C) 1999-2003 Gregor N. Purdy. All rights reserved.
-
-This program is free software. It is subject to the same license as Perl.
-
-=cut
-
-use strict;
-
-use HTTP::Response;
-
-use vars qw(@ISA);
-
-@ISA = qw(HTTP::Response);
-
-
-#
-# matches()
-#
-# Output: One array reference for each address returned. Each array
-#         contains the Street Address, City, State, and Zip.
-#
-
-sub matches
-{
-	my $self = shift;
-	my $addr = $self->content;
-
-	return unless ($addr =~ m/The standardized address is:/sm);
-
-	#
-	# First, chop out all the lines preceding and following the
-	# addresses:
-	#
-
-	$addr =~ s/^.*The standardized address is:<p>(.*)<HR><center>.*$/$1/sm;
-
-    #
-    # Now, split  on <HR>
-    #
-
-    my @addrs = split(/<HR>/sm, $addr);
-    my @output;
-
-    foreach (@addrs) {
-      push @output, scrape_address($_);
+  if (@matches) {
+    printf "\n%d matches:\n", scalar(@matches);
+    foreach my $match (@matches) {
+      print "-" x 39, "\n";
+      print $match->to_dump;
+      print "\n";
     }
-
-    return @output;
-}
-
-
-#
-# first_match()
-#
-
-sub first_match
-{
-	my $self = shift;
-
-    my @addrs = $self->matches;
-
-    return unless @addrs;
-
-    my $first = shift @addrs;
-
-    my %addr = %$first;
-
-    return ($addr{STREET}, $addr{CITY}, $addr{STATE}, $addr{ZIP});
-}
-
-
-#
-# Proper module termination:
-#
-
-1;
-
-__END__
-
-#
-# Documentation:
-#
-
-=pod
-
-=head1 NAME
-
-Scrape::USPS::ZipLookup::Response - Standardize U.S. postal addresses.
-
-=head1 SYNOPSIS
-
-  use Scrape::USPS::ZipLookup::Response;
-
-  my $res = $user_agent->...;
-  bless $res, 'Scrape::USPS::ZipLookup::Response';
-
+    print "-" x 39, "\n";
+  }
+  else {
+    print "No matches!\n";
+  }
 
 =head1 DESCRIPTION
 
-Used to parse an HTML response to a request made via 
-The United States Postal Service (USPS) HTML form at
-C<http://www.usps.gov/ncsc/lookups/lookup_zip+4.html>
-for standardizing an address.
+Results from Scrape::USPS::ZipLookup calls are of this type. 
+
+
+=head2 FIELDS
+
+Basic information:
+
+=over 4
+
+=item * firm
+
+=item * urbanization
+
+=item * delivery_address
+
+=item * city
+
+=item * state
+
+=item * zip_code
+
+=back
+
+Detailed information (see the U.S. Postal Service web site for definitions at
+L<http://zip4.usps.com/zip4/pu_mailing_industry_def.htm>):
+
+=over 4
+
+=item * carrier_route
+
+=item * county
+
+=item * delivery_point
+
+=item * check_digit
+
+=item * lac_indicator
+
+=item * elot_sequence
+
+=item * elot_indicator
+
+=item * record_type
+
+=item * pmb_designator
+
+=item * pmb_number
+
+=item * default_address
+
+=item * early_warning
+
+=item * valid
+
+=back
 
 
 =head1 TERMS OF USE
@@ -597,7 +408,7 @@ Gregor N. Purdy, C<gregor@focusresearch.com>.
 
 =head1 COPYRIGHT
 
-Copyright (C) 1999-2001 Gregor N. Purdy. All rights reserved.
+Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 

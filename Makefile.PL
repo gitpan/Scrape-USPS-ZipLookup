@@ -1,10 +1,10 @@
 #
 # Makefile.PL
 #
-# Copyright (C) 1999-2005 Gregor N. Purdy. All rights reserved.
+# Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
 # This program is free software. It is subject to the same license as Perl.
 #
-# [ $Revision: 1.4 $ ]
+# [ $Id: Makefile.PL 2209 2006-07-04 19:55:33Z gregor $ ]
 #
 
 use ExtUtils::MakeMaker;

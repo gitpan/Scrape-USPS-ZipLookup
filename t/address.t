@@ -2,10 +2,10 @@
 #
 # address.t
 #
-# Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
+# Copyright (C) 1999-2012 Gregor N. Purdy. All rights reserved.
 # This program is free software. It is subject to the same license as Perl.
 #
-# [ $Id: address.t 2209 2006-07-04 19:55:33Z gregor $ ]
+# [ $Id$ ]
 #
 
 use strict;

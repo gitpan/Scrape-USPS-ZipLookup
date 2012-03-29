@@ -9,11 +9,11 @@
 # BE SURE TO READ AND UNDERSTAND THE TERMS OF USE SECTION IN THE
 # DOCUMENTATION, WHICH MAY BE FOUND AT THE END OF THIS SOURCE CODE.
 #
-# Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
+# Copyright (C) 1999-2012 Gregor N. Purdy, Sr. All rights reserved.
 #
 # This program is free software. It is subject to the same license as Perl.
 #
-# [ $Id: Address.pm 2211 2006-07-04 20:19:19Z gregor $ ]
+# [ $Id$ ]
 #
 
 package Scrape::USPS::ZipLookup::Address;
@@ -43,6 +43,7 @@ my @output_fields = (
   'County',
   'Delivery Point',
   'Check Digit',
+  'Commercial Mail Receiving Agency',
   'LAC Indicator',
   'eLOT Sequence',
   'eLOT Indicator',
@@ -153,6 +154,8 @@ sub carrier_route    { my $self = shift; $self->_field('Carrier Route',    @_); 
 sub county           { my $self = shift; $self->_field('County',           @_); }
 sub delivery_point   { my $self = shift; $self->_field('Delivery Point',   @_); }
 sub check_digit      { my $self = shift; $self->_field('Check Digit',      @_); }
+
+sub commercial_mail_receiving_agency  { my $self = shift; $self->_field('Commercial Mail Receiving Agency', @_); }
 
 sub lac_indicator    { my $self = shift; $self->_field('LAC Indicator',    @_); }
 sub elot_sequence    { my $self = shift; $self->_field('eLOT Sequence',    @_); }
@@ -368,6 +371,8 @@ L<http://zip4.usps.com/zip4/pu_mailing_industry_def.htm>):
 
 =item * check_digit
 
+=item * commercial_mail_receiving_agency
+
 =item * lac_indicator
 
 =item * elot_sequence
@@ -403,12 +408,12 @@ belongs to the user of this code, not the author.
 
 =head1 AUTHOR
 
-Gregor N. Purdy, C<gregor@focusresearch.com>.
+Gregor N. Purdy, Sr. C<gnp@acm.org>.
 
 
 =head1 COPYRIGHT
 
-Copyright (C) 1999-2006 Gregor N. Purdy. All rights reserved.
+Copyright (C) 1999-2012 Gregor N. Purdy, Sr. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
